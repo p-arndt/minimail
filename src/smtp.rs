@@ -546,8 +546,12 @@ pub fn find_data_terminator(buf: &[u8]) -> Option<usize> {
 }
 
 fn find_pattern_terminator(buf: &[u8]) -> Option<usize> {
-    let crlf = find_sub(buf, b"\r\n.\r\n");
-    let lf = find_sub(buf, b"\n.\n");
+    // The CRLF (or bare LF) that precedes the "." line is the last data line's
+    // own terminator and belongs to the message; only the ".<CRLF>" line itself
+    // is stripped. Keep that trailing newline (SPEC §6: "terminating `.` line
+    // removed, CRLF preserved").
+    let crlf = find_sub(buf, b"\r\n.\r\n").map(|a| a + 2);
+    let lf = find_sub(buf, b"\n.\n").map(|b| b + 1);
     match (crlf, lf) {
         (Some(a), Some(b)) => Some(a.min(b)),
         (Some(a), None) => Some(a),
@@ -1006,8 +1010,9 @@ mod tests {
 
     #[test]
     fn find_terminator_crlf_and_bare_lf() {
-        assert_eq!(find_data_terminator(b"hello\r\n.\r\n"), Some(5));
-        assert_eq!(find_data_terminator(b"hello\n.\n"), Some(5));
+        // The last data line's CRLF/LF is preserved; only the ".<CRLF>" line is stripped.
+        assert_eq!(find_data_terminator(b"hello\r\n.\r\n"), Some(7));
+        assert_eq!(find_data_terminator(b"hello\n.\n"), Some(6));
         assert_eq!(find_data_terminator(b"no terminator here"), None);
         // empty body: "." right at the start
         assert_eq!(find_data_terminator(b".\r\n"), Some(0));
