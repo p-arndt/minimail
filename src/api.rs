@@ -335,8 +335,13 @@ fn get_html(srv: &Server, sock: &mut Stream, id: &str) -> io::Result<()> {
     match msg.html_body() {
         Some(html) => {
             let bytes = html.into_bytes();
+            // Captured mail is attacker-controlled. The UI renders it in a sandboxed
+            // iframe, but this endpoint can also be navigated to directly, so sandbox
+            // it at the HTTP layer too: an opaque origin with scripting disabled.
             Response::new(200)
                 .header("Content-Type", "text/html; charset=utf-8")
+                .header("Content-Security-Policy", "sandbox")
+                .header("X-Content-Type-Options", "nosniff")
                 .write_headers(sock, Some(bytes.len() as u64))?;
             sock.write_all(&bytes)
         }
@@ -388,9 +393,13 @@ fn get_part(
         }
     };
 
+    // The part's Content-Type is attacker-controlled; an inline text/html or SVG part
+    // would otherwise execute on this origin when opened directly. Sandbox + nosniff.
     let mut resp = Response::new(status)
         .header("Content-Type", part.content_type.as_str())
         .header("Content-Disposition", &disp)
+        .header("Content-Security-Policy", "sandbox")
+        .header("X-Content-Type-Options", "nosniff")
         .header("Accept-Ranges", "bytes");
     if status == 206 {
         resp = resp.header(

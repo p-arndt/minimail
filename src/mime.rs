@@ -214,11 +214,29 @@ fn classify(p: &mut Part, htmls: &[String]) {
         let referenced = p
             .content_id
             .as_ref()
-            .is_some_and(|cid| htmls.iter().any(|h| h.contains(&format!("cid:{cid}"))));
+            .is_some_and(|cid| htmls.iter().any(|h| references_cid(h, cid)));
         !referenced
     } else {
         false
     };
+}
+
+/// True if `html` references `cid:<id>` as a whole token. A plain substring test would
+/// let `cid:img1` match a `cid:img10` reference, misclassifying the inline resource.
+fn references_cid(html: &str, cid: &str) -> bool {
+    let needle = format!("cid:{cid}");
+    html.match_indices(&needle).any(|(idx, _)| {
+        // The reference is a whole token only if it is not immediately followed by
+        // another Content-ID token character. End-of-string counts as a boundary.
+        match html[idx + needle.len()..].chars().next() {
+            Some(c) => !is_cid_token_char(c),
+            None => true,
+        }
+    })
+}
+
+fn is_cid_token_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || "!#$%&'*+-/=?^_`{|}~.@".contains(c)
 }
 
 /// Split raw bytes into unfolded (name, value) headers + the byte offset of the body.
@@ -999,6 +1017,27 @@ mod tests {
             m.part_by_id("2").unwrap().content_id.as_deref(),
             Some("img1")
         );
+    }
+
+    #[test]
+    fn cid_reference_is_token_anchored() {
+        // The HTML references cid:img10, so a leaf with Content-ID <img1> is NOT
+        // referenced and must be classified as an attachment (no substring match).
+        let raw = concat!(
+            "Content-Type: multipart/related; boundary=R\r\n\r\n",
+            "--R\r\n",
+            "Content-Type: text/html\r\n\r\n",
+            "<img src=\"cid:img10\">\r\n",
+            "--R\r\n",
+            "Content-Type: image/png\r\n",
+            "Content-ID: <img1>\r\n",
+            "Content-Transfer-Encoding: base64\r\n\r\n",
+            "AAAA\r\n",
+            "--R--\r\n",
+        )
+        .as_bytes();
+        let m = parse(raw);
+        assert_eq!(m.attachments().len(), 1);
     }
 
     #[test]

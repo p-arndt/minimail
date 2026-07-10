@@ -692,13 +692,16 @@ fn read_and_store_data<R: BufRead>(
     let mut buf: Vec<u8> = Vec::new();
     let mut scanned = 0usize;
     let mut over = false;
+    let mut dropped = false; // true once over-size bytes have been discarded from the front
     let mut chunk = [0u8; 8192];
     let term_at;
     loop {
         // Near the start use the full detector (it also handles the empty-body "."
         // terminator at index 0); once past the head, scan a 4-byte straddle window.
+        // Once we've dropped front bytes, the head detector's leading-"." special
+        // case must not fire on a mid-stream tail, so force the straddle scanner.
         let from = scanned.saturating_sub(4);
-        let hit = if from == 0 {
+        let hit = if from == 0 && !dropped {
             find_data_terminator(&buf)
         } else {
             find_pattern_terminator(&buf[from..]).map(|rel| from + rel)
@@ -706,6 +709,14 @@ fn read_and_store_data<R: BufRead>(
         if let Some(p) = hit {
             term_at = p;
             break;
+        }
+        // Over the limit: we will reply 552 and never keep the body, so stop
+        // hoarding it. Discard all but a 4-byte straddle tail (so a terminator
+        // spanning the truncation boundary is still detected). Memory stays O(chunk).
+        if over && buf.len() > 4 {
+            let drop = buf.len() - 4;
+            buf.drain(..drop);
+            dropped = true;
         }
         scanned = buf.len();
         let n = reader.read(&mut chunk)?;
