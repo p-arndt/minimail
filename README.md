@@ -78,6 +78,38 @@ docker run --rm -p 1025:1025 -p 8025:8025 -v minimail-data:/data \
   --user dev --password dev
 ```
 
+Or with Docker Compose:
+
+```yaml
+services:
+  minimail:
+    image: ghcr.io/p-arndt/minimail:latest
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # HTTP UI + API
+    volumes:
+      - minimail-data:/data
+      - ./minimail.creds:/minimail.creds:ro
+    command: >
+      --smtp-bind 0.0.0.0:1025 --http-bind 0.0.0.0:8025 --root /data
+      --credentials /minimail.creds
+
+volumes:
+  minimail-data:
+```
+
+with a `minimail.creds` file next to the compose file — one `KEY=SECRET` per
+line (`#` starts a comment; the first `=` splits, so secrets may contain `=`):
+
+```
+# key=secret, used for both SMTP AUTH and HTTP Basic on the UI/API
+dev=devpassword
+```
+
+Then `docker compose up` and point your app at `127.0.0.1:1025`. For a single
+throwaway credential you can skip the file and pass `--user dev --password dev`
+in `command:` instead; or `--anonymous` for no auth at all.
+
 To build the image yourself:
 
 ```bash
