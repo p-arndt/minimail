@@ -1,5 +1,11 @@
 # minimail
 
+> [!IMPORTANT]
+> **This repository is archived.** minimail now lives in the
+> [minisuite](https://github.com/p-arndt/minisuite) workspace together with
+> its sibling services, and is released from there as a binary and as the
+> `ghcr.io/p-arndt/minimail` image. Report issues and send changes to minisuite.
+
 A tiny, **dependency-free** development SMTP sink with a web UI and JSON API, written in pure Rust.
 
 No `tokio`, no `hyper`, no `serde`, no `lettre`, no crypto crate — just the standard library. It speaks SMTP on one port, accepts every message, and **never delivers onward**. Captured mail is retrieved through an embedded web UI and a JSON API on a second port. The whole thing is around 5k lines and compiles into a single static binary you can drop on any machine.
